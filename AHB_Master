@@ -1,0 +1,32 @@
+module ahb_master(
+    input HCLK,
+    input HRESETn,
+
+    output reg [31:0] HADDR,
+    output reg [31:0] HWDATA,
+    output reg HWRITE,
+    output reg [1:0] HTRANS,
+
+    input [31:0] HRDATA
+);
+
+always @(posedge HCLK or negedge HRESETn)
+begin
+    if(!HRESETn)
+    begin
+        HADDR  <= 0;
+        HWDATA <= 0;
+        HWRITE <= 0;
+        HTRANS <= 2'b00;
+    end
+    else
+    begin
+        // Write Transaction
+        HADDR  <= 32'h00000004;
+        HWDATA <= 32'hAABBCCDD;
+        HWRITE <= 1'b1;
+        HTRANS <= 2'b10;
+    end
+end
+
+endmodule
