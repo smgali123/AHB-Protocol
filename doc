@@ -1,1 +1,74 @@
+AHB Protocol using Verilog HDL
+Project Title
 
+AHB-Lite Bus Protocol Implementation using Verilog HDL
+
+Objective
+
+The objective of this project is to implement a simple AHB-Lite bus protocol using Verilog HDL. The design demonstrates communication between an AHB Master and an AHB Slave using read and write operations.
+
+Introduction
+
+AHB (Advanced High-performance Bus) is part of the ARM AMBA architecture. It is a high-speed bus used to connect processors, memories, and peripherals in embedded systems. This project provides a basic implementation of an AHB Master, AHB Slave, and a Testbench for simulation purposes.
+
+Project Files
+File Name	Description
+ahb_master.v	Implements the AHB Master
+ahb_slave.v	Implements the AHB Slave
+ahb_tb.v	Testbench for simulation
+README.md	Project description
+Features
+Simple AHB-Lite implementation
+Write operation
+Read operation
+32-bit Address Bus
+32-bit Data Bus
+Memory-based slave
+Simulation testbench included
+Bus Signals
+Signal	Description
+HCLK	System Clock
+HRESETn	Active-Low Reset
+HADDR	Address Bus
+HWDATA	Write Data
+HRDATA	Read Data
+HWRITE	Read/Write Control
+HTRANS	Transfer Type
+HREADY	Ready Signal
+HRESP	Response Signal
+Working
+Write Operation
+Master sends an address.
+Master places data on the write data bus.
+HWRITE is set to logic '1'.
+Slave stores the data in memory.
+Read Operation
+Master sends the address.
+HWRITE is set to logic '0'.
+Slave reads data from memory.
+Slave sends data on the HRDATA bus.
+Simulation Steps
+Compile all Verilog files.
+Start simulation.
+Apply reset.
+Perform write operation.
+Perform read operation.
+Verify the read data.
+Expected Output
+Write Address : 0x00000004
+Write Data    : AABBCCDD
+
+Read Address  : 0x00000004
+Read Data     : AABBCCDD
+Software Used
+Verilog HDL
+ModelSim / QuestaSim
+Xilinx Vivado (Optional)
+Conclusion
+
+This project successfully demonstrates a basic implementation of the AHB-Lite protocol in Verilog. The Master and Slave communicate correctly through read and write transactions. This project is suitable for learning the fundamentals of the AHB protocol and can be extended with advanced features such as burst transfers, multiple masters, and bus arbitration.
+
+Author
+
+Name:S.M.Ghayyoor Ali Naqvi
+Degree: BS Electrical Engineering
