@@ -1,0 +1,126 @@
+module ahb_master(
+    input hclk,
+    input hresetn,
+    input enable,
+    input [31:0] data_in_a,
+    input [31:0] data_in_b,
+    input [31:0] addr,
+    input wr,
+    input hreadyout,       // FROM SLAVE: Must check before moving states
+    input hresp,
+    input [31:0] hrdata,   // FROM SLAVE
+    input [1:0] slave_sel,
+
+    output reg [1:0] sel,
+    output reg [31:0] haddr,
+    output reg hwrite,
+    output reg [2:0] hsize,
+    output reg [2:0] hburst,
+    output reg [3:0] hprot,
+    output reg [1:0] htrans,
+    output reg hready,     // TO SLAVE: Typically driven high by a single master
+    output reg [31:0] hwdata,
+    output reg [31:0] data_out
+);
+
+    // States
+    localparam IDLE       = 2'b00;
+    localparam ADDR_PHASE = 2'b01;
+    localparam DATA_PHASE = 2'b10;
+
+    reg [1:0] state, next;
+    
+    // Internal registers to pipeline the data phase
+    reg [31:0] hwdata_reg;
+    reg        is_write_reg;
+
+    // -----------------------------------------------------
+    // Sequential State and Data Pipelining Registers
+    // -----------------------------------------------------
+    always @(posedge hclk or negedge hresetn) begin
+        if (!hresetn) begin
+            state        <= IDLE;
+            hwdata_reg   <= 32'h0;
+            is_write_reg <= 1'b0;
+            data_out     <= 32'h0;
+        end else if (hreadyout) begin 
+            // State transitions and internal updates only happen when the slave is ready
+            state <= next;
+            
+            if (state == ADDR_PHASE) begin
+                hwdata_reg   <= data_in_a + data_in_b; // Calculate and save data for next cycle
+                is_write_reg <= wr;                    // Remember if this transaction was a write
+            end
+            
+            if (state == DATA_PHASE && !is_write_reg) begin
+                data_out     <= hrdata;                // Safely sample read data at the end of data phase
+            end
+        end
+    end
+
+    // -------------------
+    // Next State Logic
+    // -------------------
+    always @(*) begin
+        next = state;
+        case (state)
+            IDLE: begin
+                if (enable) next = ADDR_PHASE;
+            end
+
+            ADDR_PHASE: begin
+                // Move to data phase to complete the transaction
+                next = DATA_PHASE;
+            end
+
+            DATA_PHASE: begin
+                // If the slave is ready, we can chain a new transaction or go IDLE
+                if (enable) 
+                    next = ADDR_PHASE;
+                else        
+                    next = IDLE;
+            end
+        endcase
+    end
+
+    // -------------------
+    // Output Logic
+    // -------------------
+    always @(*) begin
+        // Secure default assignments
+        sel      = 2'b00;
+        haddr    = 32'h0;
+        hwrite   = 1'b0;
+        hsize    = 3'b010; // Word access (32-bit)
+        hburst   = 3'b000; // SINGLE burst
+        hprot    = 4'b0011;
+        htrans   = 2'b00;  // IDLE transfer type
+        hready   = 1'b1;   // Master is ready to drive/receive
+        hwdata   = 32'h0;
+
+        case (state)
+            IDLE: begin
+                htrans = 2'b00; // IDLE
+            end
+
+            ADDR_PHASE: begin
+                sel    = slave_sel;
+                haddr  = addr;
+                hwrite = wr;
+                htrans = 2'b10; // NONSEQ (Start of a transfer)
+            end
+
+            DATA_PHASE: begin
+                // Drive the write data that we calculated during the address phase
+                if (is_write_reg) begin
+                    hwdata = hwdata_reg;
+                end
+                
+                // If doing back-to-back streaming transfers, you would also 
+                // drive the *next* address here. Kept simple for illustration.
+                htrans = 2'b00; // IDLE (assuming no immediate back-to-back transfer)
+            end
+        endcase
+    end
+
+endmodule
