@@ -1,0 +1,47 @@
+module ahb_slave (
+    input         HCLK,
+    input         HRESETn,
+
+    input  [31:0] HADDR,
+    input  [31:0] HWDATA,
+    input         HWRITE,
+    input  [1:0]  HTRANS,
+
+    output reg [31:0] HRDATA,
+    output reg        HREADY,
+    output reg [1:0]  HRESP
+);
+
+reg [31:0] memory [0:255];
+
+always @(posedge HCLK or negedge HRESETn)
+begin
+    if(!HRESETn)
+    begin
+        HREADY <= 1'b1;
+        HRESP  <= 2'b00;     // OKAY
+        HRDATA <= 32'd0;
+    end
+    else
+    begin
+        HREADY <= 1'b1;
+        HRESP  <= 2'b00;
+
+        if(HTRANS != 2'b00)
+        begin
+
+            if(HWRITE)
+            begin
+                memory[HADDR[9:2]] <= HWDATA;
+            end
+            else
+            begin
+                HRDATA <= memory[HADDR[9:2]];
+            end
+
+        end
+
+    end
+end
+
+endmodule
