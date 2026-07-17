@@ -1,0 +1,191 @@
+`timescale 1ns/1ps
+
+module ahb_master_tb;
+
+    // Inputs to Master (TB registers)
+    reg hclk;
+    reg hresetn;
+    reg enable;
+    reg [31:0] data_in_a;
+    reg [31:0] data_in_b;
+    reg [31:0] addr;
+    reg wr;
+    reg hreadyout;
+    reg hresp;
+    reg [31:0] hrdata;
+    reg [1:0] slave_sel;
+
+    // Outputs from Master
+    wire [1:0] sel;
+    wire [31:0] haddr;
+    wire hwrite;
+    wire [2:0] hsize;
+    wire [2:0] hburst;
+    wire [3:0] hprot;
+    wire [1:0] htrans;
+    wire hready;
+    wire [31:0] hwdata;
+    wire [31:0] data_out;
+
+    // Instantiate the AHB Master (UUT)
+    ahb_master uut (
+        .hclk(hclk),
+        .hresetn(hresetn),
+        .enable(enable),
+        .data_in_a(data_in_a),
+        .data_in_b(data_in_b),
+        .addr(addr),
+        .wr(wr),
+        .hreadyout(hreadyout),
+        .hresp(hresp),
+        .hrdata(hrdata),
+        .slave_sel(slave_sel),
+        .sel(sel),
+        .haddr(haddr),
+        .hwrite(hwrite),
+        .hsize(hsize),
+        .hburst(hburst),
+        .hprot(hprot),
+        .htrans(htrans),
+        .hready(hready),
+        .hwdata(hwdata),
+        .data_out(data_out)
+    );
+
+    // -----------------------------------------------------
+    // Clock Generation (50MHz)
+    // -----------------------------------------------------
+    always #10 hclk = ~hclk;
+
+    // -----------------------------------------------------
+    // Mock AHB Slave Behavioral Logic
+    // -----------------------------------------------------
+    reg [31:0] slave_addr_latch;
+    reg        slave_write_latch;
+
+    // Slave captures Address Phase control signals
+    always @(posedge hclk or negedge hresetn) begin
+        if (!hresetn) begin
+            slave_addr_latch  <= 32'h0;
+            slave_write_latch <= 1'b0;
+        end else if (hreadyout && (htrans == 2'b10)) begin // Capture on NONSEQ
+            slave_addr_latch  <= haddr;
+            slave_write_latch <= hwrite;
+        end
+    end
+
+    // Slave drives hrdata during Read Data Phase
+    always @(*) begin
+        if (!slave_write_latch) begin
+            // Read response based on latched address
+            case (slave_addr_latch)
+                32'h1000_0000: hrdata = 32'hDEAD_BEEF;
+                32'h2000_0000: hrdata = 32'hCAFE_BABE;
+                default:       hrdata = 32'h0000_0000;
+            endcase
+        end else begin
+            hrdata = 32'h0;
+        end
+    end
+
+    // -----------------------------------------------------
+    // Stimulus / Test Scenarios
+    // -----------------------------------------------------
+    initial begin
+        // VCD Dump files (for Waveform view)
+        $dumpfile("ahb_master_tb.vcd");
+        $dumpvars(0, ahb_master_tb);
+
+        // Initialize Inputs
+        hclk       = 0;
+        hresetn    = 0;
+        enable     = 0;
+        data_in_a  = 0;
+        data_in_b  = 0;
+        addr       = 0;
+        wr         = 0;
+        hreadyout  = 1; // Slave ready by default
+        hresp      = 0;
+        slave_sel  = 2'b01;
+
+        // Reset Sequence
+        #25;
+        hresetn = 1;
+        #20;
+
+        // ---- TEST 1: WRITE TRANSACTION (No Wait States) ----
+        $display("[TB] Starting WRITE transaction...");
+        @(posedge hclk);
+        #1; // Setup time
+        enable    = 1;
+        addr      = 32'hA000_1234;
+        wr        = 1;          // Write operations
+        data_in_a = 32'h1000_0000;
+        data_in_b = 32'h0000_ABCD; // Total HWDATA should be 32'h1000_ABCD
+        
+        @(posedge hclk); // Moves master to ADDR_PHASE
+        #1;
+        enable    = 0; // Turn off enable so it performs a single transaction
+
+        @(posedge hclk); // Moves master to DATA_PHASE (HWDATA is active here)
+        #1;
+        $display("[TB] HWDATA sampled during Data Phase: %h (Expected: 1000abcd)", hwdata);
+
+        @(posedge hclk); // Back to IDLE
+        #20;
+
+
+        // ---- TEST 2: READ TRANSACTION (No Wait States) ----
+        $display("[TB] Starting READ transaction...");
+        @(posedge hclk);
+        #1;
+        enable    = 1;
+        addr      = 32'h1000_0000; // Mock slave will return DEADBEEF
+        wr        = 0;             // Read operation
+        
+        @(posedge hclk); // Moves to ADDR_PHASE
+        #1;
+        enable    = 0;
+
+        @(posedge hclk); // Moves to DATA_PHASE (Slave responds with DEADBEEF)
+        #1;
+        
+        @(posedge hclk); // Master samples data_out here at the end of data phase
+        #1;
+        $display("[TB] data_out sampled after Read: %h (Expected: deadbeef)", data_out);
+        #20;
+
+
+        // ---- TEST 3: WRITE WITH SLAVE WAIT STATE (hreadyout = 0) ----
+        $display("[TB] Starting WRITE transaction with Slave Wait State...");
+        @(posedge hclk);
+        #1;
+        enable    = 1;
+        addr      = 32'hB000_5678;
+        wr        = 1;
+        data_in_a = 32'h1111_1111;
+        data_in_b = 22'h2222_2222;
+
+        @(posedge hclk); // Master goes to ADDR_PHASE
+        #1;
+        enable    = 0;
+        
+        @(posedge hclk); // Master goes to DATA_PHASE, but slave inserts wait state
+        #1;
+        hreadyout = 0;   // Slave says: "I'm not ready yet!"
+        
+        #20;             // Wait 1 clock cycle while slave blocks the bus
+        $display("[TB] Slave is holding hreadyout LOW. Checking if HWDATA stays stable: %h", hwdata);
+        
+        @(posedge hclk);
+        #1;
+        hreadyout = 1;   // Slave releases the bus
+
+        @(posedge hclk); // Master finally finishes data phase and returns to IDLE
+        #20;
+
+        $display("[TB] All tests completed.");
+        $finish;
+    end
+
+endmodule
